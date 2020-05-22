@@ -1,0 +1,123 @@
+<!DOCTYPE html >
+<html>
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <link rel="stylesheet" type="text/css" href="../css/metroStyle/metroStyle.css">
+    <script type="text/javascript" src="../js/jquery-1.4.4.min.js"></script>
+    <script type="text/javascript" src="../js/jquery.ztree.core.min.js"></script>
+    <script type="text/javascript" src="../js/jquery.ztree.excheck.min.js"></script>
+    <!--如果要实现修改,删除功能要加下面的js文件-->
+    <script type="text/javascript" src="../js/jquery.ztree.exedit.min.js"></script>
+    <script type="text/javascript">
+        var setting = {
+            check: {
+                enable: true,
+                chkStyle: "radio",
+                radioType: "all"
+            },
+            data: {
+                simpleData: {
+                    enable: true
+                }
+            },
+            edit:{
+                enable: true,
+                editNameSelectAll: true,
+                showRemoveBtn: showRemoveBtn,
+                showRenameBtn: showRenameBtn
+            },
+            callback: {
+                onExpand: zTreeOnExpand,
+                beforeRemove : beforeRemove,
+                beforeRename:beforeRename
+            }
+        };
+        //加载展开方法
+        /*debugger*/
+        function zTreeOnExpand(event, treeId, treeNode) {
+            /*alert(treeNode.id);*/
+            var treeNodeId = treeNode.id;
+            $.post(
+                '/ztree/getCityZtree',
+                {parentId: treeNodeId},
+                function (data) {
+                    var tree = $.fn.zTree.getZTreeObj("myZtree");
+                    /*zTree v3.x 专门提供的根据 treeId 获取 zTree 对象的方法。 必须在初始化 zTree 以后才可以使用此方法。*/
+
+                    if (!treeNode.zAsync) { /* treeNode 节点是否已经进行过异步加载，避免父节点反复异步加载数据*/
+                        tree.addNodes(treeNode, data);
+                        treeNode.zAsync = true; /* true （有子节点的父节点 & 叶子节点）*/
+                    } else {
+                        tree.reAsyncChildNodes(treeNode, "refresh");
+                    }
+                }
+            );
+        }
+        function showRemoveBtn(treeId, treeNode) {
+            return !treeNode.level==0;  /*用于显示删除按钮*/
+        }
+        function showRenameBtn(treeId, treeNode) {
+            return treeNode;            /*显示修改按钮*/
+        }
+        function beforeRemove(treeId,treeNode){
+            if(treeNode.pId==0){                //如果删除的是根节点，提示无法删除
+                alert("根节点无法删除！");
+                return false;                    //返回false 就会使前端的节点还保持存在，
+                //	如果是true,则会在前端界面删除，但数据库中还会有，刷新一下即可再次出现
+            }
+            if(confirm("是否删除？")){  // 询问是否删除，若删除，则利用Ajax 技术异步删除，同是返回json格式数据，告知前台是否删除成功！
+                $.post(
+                    '/ztree/deleteCityServlet',
+                    {id: treeNode.id},
+                    function(){ // 从数据库中删除
+                        zTree.removeNode(treeNode);
+                        // z-Tree 的api ，从视角上 删除// 要在后台删除成功后再进行视角上删除，这样就真正意义实现了删除。
+                })
+            }
+            return;
+        }
+
+        function beforeRename(treeId, treeNode, newName, isCancel) {
+            var zTree = $.fn.zTree.getZTreeObj("myZtree");
+            var oldName = treeNode.nodeName;    //首先取原始的节点值
+                if(newName==""){                  // 新名称为空的情况
+                    var node = treeNode.getParentNode();  //获取父节点
+                    zTree.reAsyncChildNodes(node, "refresh");  //重新访问数据库更新父节点，即可回到旧名称
+                    alert("名称不能为空！");
+                }
+                else if(newName!=treeNode.nodeName){     // 如果新名称与就名称一致，什么也不做
+                    $.post(
+                        '/ztree/updateCity',
+                        {id: treeNode.id,
+                            name:newName
+                        },
+                        function(data){
+                            if (data == 1){
+                                alert("修改成功");   //提示更改成功!
+                            }else{                    //修改失败，即同一父类型下不能名称相同（我自己加的限制条件，你可以根据需要修改）
+                                var node = treeNode.getParentNode();
+                                zTree.reAsyncChildNodes(node, "refresh");  //回到旧名称
+                                alert("修改失败");
+                            }
+                        })
+                }
+        }
+
+        //首次进入加载level为1的
+        $(function () {
+            $.post(
+                '/ztree/getCityZtree',
+                function (data) {
+                    $.fn.zTree.init($("#myZtree"), setting, data);
+                    /*zTree 初始化方法，创建 zTree 必须使用此方法*/
+                }
+            );
+        });
+
+
+    </script>
+</head>
+<body style="overflow-y: auto">
+<ul id="myZtree" class="ztree"></ul>
+</body>
+</html>
